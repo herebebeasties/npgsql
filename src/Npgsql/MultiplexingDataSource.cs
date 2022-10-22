@@ -99,14 +99,14 @@ sealed class MultiplexingDataSource : PoolingDataSource
 
                     connector = await OpenNewConnector(
                         command.Connection!,
-                        new NpgsqlTimeout(TimeSpan.FromSeconds(Settings.Timeout)),
+                        TimeSpan.FromSeconds(Settings.Timeout),
                         async: true,
                         CancellationToken.None);
 
                     if (connector != null)
                     {
                         // Managed to created a new connector
-                        connector.Connection = null;
+                        Debug.Assert(connector.Connection is null);
 
                         // See increment under over-capacity mode below
                         Interlocked.Increment(ref connector.CommandsInFlightCount);

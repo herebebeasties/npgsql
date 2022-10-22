@@ -174,7 +174,7 @@ public readonly struct NpgsqlTimeout
 {
     readonly DateTime _expiration;
 
-    internal static NpgsqlTimeout Infinite = new(TimeSpan.Zero);
+    internal static readonly NpgsqlTimeout Infinite = new(TimeSpan.Zero);
 
     internal NpgsqlTimeout(TimeSpan expiration)
         => _expiration = expiration > TimeSpan.Zero
