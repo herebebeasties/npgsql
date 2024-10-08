@@ -731,11 +731,16 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                                 continue;
 
                             var pStatement = batchCommand.PreparedStatement!;
+                            var replacedStatement = pStatement.StatementBeingReplaced;
 
-                            if (pStatement.StatementBeingReplaced != null)
+                            if (replacedStatement != null)
                             {
                                 Expect<CloseCompletedMessage>(await connector.ReadMessage(async).ConfigureAwait(false), connector);
-                                pStatement.StatementBeingReplaced.CompleteUnprepare();
+                                replacedStatement.CompleteUnprepare();
+
+                                if (!replacedStatement.IsExplicit)
+                                    connector.PreparedStatementManager.AutoPrepared[replacedStatement.AutoPreparedSlotIndex] = null;
+
                                 pStatement.StatementBeingReplaced = null;
                             }
 
@@ -974,6 +979,9 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                     // With functions, output parameters are never present when calling the function (they only define the schema of the
                     // returned table). With stored procedures they must be specified in the CALL argument list (see below).
                     if (EnableStoredProcedureCompatMode && parameter.Direction == ParameterDirection.Output)
+                        continue;
+
+                    if (parameter.Direction == ParameterDirection.ReturnValue)
                         continue;
 
                     if (isFirstParam)
@@ -1481,6 +1489,10 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                         break;
                     }
 
+                    // If a cancellation is in progress, wait for it to "complete" before proceeding (#615)
+                    // We do it before changing the state because we only allow sending cancellation request if State == InProgress
+                    connector.ResetCancellation();
+
                     State = CommandState.InProgress;
 
                     if (logger.IsEnabled(LogLevel.Information))
@@ -1495,9 +1507,6 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                     startTimestamp = connector.DataSource.MetricsReporter.ReportCommandStart();
                     TraceCommandStart(connector.Settings);
                     TraceCommandEnrich(connector);
-
-                    // If a cancellation is in progress, wait for it to "complete" before proceeding (#615)
-                    connector.ResetCancellation();
 
                     // We do not wait for the entire send to complete before proceeding to reading -
                     // the sending continues in parallel with the user's reading. Waiting for the
@@ -1659,7 +1668,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         if (connector is null)
             return;
 
-        connector.PerformUserCancellation();
+        connector.PerformImmediateUserCancellation();
     }
 
     #endregion Cancel
